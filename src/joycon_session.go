@@ -124,9 +124,9 @@ func (session *JoyconSession) discoverCharacteristic(characteristicUUID bluetoot
 	return characteristics[0], nil
 }
 
-func writeCommand(
-	writeCharacteristic bluetooth.DeviceCharacteristic,
-	commandID byte, subCommandID byte,
+func (session *JoyconSession) writeCommand(
+	commandID byte,
+	subCommandID byte,
 	cmd []byte) (int, error) {
 
 	payload := make([]byte, len(cmd))
@@ -149,10 +149,10 @@ func writeCommand(
 	}
 	buffer = append(buffer, payload...)
 
-	return writeCharacteristic.WriteWithoutResponse(buffer)
+	return session.writeCharacteristic.WriteWithoutResponse(buffer)
 }
 
-func setPlayerLEDs(writeCharacteristic bluetooth.DeviceCharacteristic, playerNo int) error {
+func (session *JoyconSession) setPlayerLEDs(playerNo int) error {
 	playerNo = max(1, min(playerNo, 8))
 
 	LED_PATTERN_ID := map[int]byte{
@@ -170,7 +170,7 @@ func setPlayerLEDs(writeCharacteristic bluetooth.DeviceCharacteristic, playerNo 
 	var LED_COMMAND_PREFIX byte = 0x09
 	var SET_LED_COMMAND byte = 0x07
 
-	_, err := writeCommand(writeCharacteristic, LED_COMMAND_PREFIX, SET_LED_COMMAND, []byte{LED_PATTERN_ID[playerNo]})
+	_, err := session.writeCommand(LED_COMMAND_PREFIX, SET_LED_COMMAND, []byte{LED_PATTERN_ID[playerNo]})
 	if err != nil {
 		return fmt.Errorf("failed to set player LEDs: %w", err)
 	}
@@ -178,13 +178,13 @@ func setPlayerLEDs(writeCharacteristic bluetooth.DeviceCharacteristic, playerNo 
 	return err
 }
 
-func enable_imu(writeCharacteristic bluetooth.DeviceCharacteristic) error {
+func (session *JoyconSession) enable_imu() error {
 	ENABLE_IMU_1 := []byte{0x0c, 0x91, 0x01, 0x02, 0x00, 0x04, 0x00, 0x00, 0x2f, 0x00, 0x00, 0x00}
 	ENABLE_IMU_2 := []byte{0x0c, 0x91, 0x01, 0x04, 0x00, 0x04, 0x00, 0x00, 0x2f, 0x00, 0x00, 0x00}
 
-	writeCharacteristic.WriteWithoutResponse(ENABLE_IMU_1)
+	session.writeCharacteristic.WriteWithoutResponse(ENABLE_IMU_1)
 	time.Sleep(500 * time.Millisecond)
-	writeCharacteristic.WriteWithoutResponse(ENABLE_IMU_2)
+	session.writeCharacteristic.WriteWithoutResponse(ENABLE_IMU_2)
 
 	return nil
 }
