@@ -8,13 +8,9 @@ import (
 )
 
 const JOYCON_MANUFACTURER_ID = 0x553
+const SCAN_TIMEOUT = 10 * time.Second
 
 var JOYCON_MANUFACTURER_PREFIX = []byte{1, 0, 3, 126}
-
-const (
-	maxFoundJoycons = 2
-	scanTimeout     = 10 * time.Second
-)
 
 type JoyconCandidate struct {
 	Device        bluetooth.Device
@@ -23,22 +19,21 @@ type JoyconCandidate struct {
 }
 
 func (am *AdapterManager) ScanJoycons() ([]JoyconCandidate, error) {
-	adapter := am.adapter
+	adapter := am.Adapter
 
 	err := adapter.Enable()
 	if err != nil {
 		return nil, err
 	}
 
-	timer := time.AfterFunc(scanTimeout, func() {
+	timer := time.AfterFunc(SCAN_TIMEOUT, func() {
 		if err :=
-			am.stopScan(fmt.Sprintf("timeout (%s)", scanTimeout)); err != nil {
-			fmt.Printf("Error stopping scan on timeout: %v\n", err)
+			am.stopScan(fmt.Sprintf("timeout (%s)", SCAN_TIMEOUT)); err != nil {
 		}
 	})
 	defer timer.Stop()
 
-	fmt.Printf("Scanning for Joy-Con 2 (max %d, timeout %s)...\n\n", maxFoundJoycons, scanTimeout)
+	fmt.Printf("Scanning for Joy-Con 2 (max %d, timeout %s)...\n\n", am.maxJoyconConnections, SCAN_TIMEOUT)
 
 	err = adapter.Scan(
 		func(a *bluetooth.Adapter, result bluetooth.ScanResult) {
@@ -60,7 +55,7 @@ func (am *AdapterManager) ScanJoycons() ([]JoyconCandidate, error) {
 func (am *AdapterManager) stopScan(reason string) error {
 	fmt.Printf("Stopping scan: %s\n", reason)
 
-	if stopErr := am.adapter.StopScan(); stopErr != nil {
+	if stopErr := am.Adapter.StopScan(); stopErr != nil {
 		return fmt.Errorf("Failed to stop scan: %w", stopErr)
 	}
 
@@ -95,18 +90,19 @@ func (am *AdapterManager) onAdapterScan(result bluetooth.ScanResult) error {
 		return nil
 	}
 
+	am.mu.Lock()
 	am.seenDevices[addr] = struct{}{}
-
 	am.candidates = append(am.candidates, JoyconCandidate{
 		Address:       result.Address,
 		AddressString: addr,
 	})
+	am.mu.Unlock()
 
 	fmt.Printf("Possible Joy-Con 2 found #%d\n", len(am.candidates))
 	fmt.Printf("  Address: %s\n", addr)
 
-	if len(am.candidates) >= maxFoundJoycons {
-		if err := am.stopScan(fmt.Sprintf("found %d Joy-Con device(s)", maxFoundJoycons)); err != nil {
+	if len(am.candidates) >= am.maxJoyconConnections {
+		if err := am.stopScan(fmt.Sprintf("found %d Joy-Con device(s)", am.maxJoyconConnections)); err != nil {
 			return fmt.Errorf("Error stopping scan: %w", err)
 		}
 	}
