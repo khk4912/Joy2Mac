@@ -60,7 +60,10 @@ func (session *JoyconSession) Address() bluetooth.Address {
 }
 
 func (session *JoyconSession) Disconnect() error {
-	return session.Device().Disconnect()
+	if session.Connected {
+		return session.Device().Disconnect()
+	}
+	return nil
 }
 
 func (session *JoyconSession) attachDevice(device bluetooth.Device) {
@@ -287,9 +290,16 @@ func (session *JoyconSession) enableIMU() error {
 	ENABLE_IMU_1 := []byte{0x0c, 0x91, 0x01, 0x02, 0x00, 0x04, 0x00, 0x00, 0x2f, 0x00, 0x00, 0x00}
 	ENABLE_IMU_2 := []byte{0x0c, 0x91, 0x01, 0x04, 0x00, 0x04, 0x00, 0x00, 0x2f, 0x00, 0x00, 0x00}
 
-	session.writeCharacteristic.WriteWithoutResponse(ENABLE_IMU_1)
+	_, err := session.writeCharacteristic.WriteWithoutResponse(ENABLE_IMU_1)
+	if err != nil {
+		return err
+	}
 	time.Sleep(500 * time.Millisecond)
-	session.writeCharacteristic.WriteWithoutResponse(ENABLE_IMU_2)
+
+	_, err = session.writeCharacteristic.WriteWithoutResponse(ENABLE_IMU_2)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

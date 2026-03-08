@@ -58,8 +58,14 @@ func (am *AdapterManager) ConnectSession(session *JoyconSession) error {
 		return err
 	}
 
+	if err := session.StartInputNotification(session.inputCh); err != nil {
+		session.resetConnectionState()
+		_ = device.Disconnect()
+		return fmt.Errorf("failed to start input notification: %w", err)
+	}
+
 	session.markConnected()
-	session.StartInputNotification(session.inputCh)
+
 	return nil
 }
 

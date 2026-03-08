@@ -1,7 +1,11 @@
 package joy2mac
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"os/signal"
+	"sync"
 	"time"
 
 	"tinygo.org/x/bluetooth"
@@ -21,31 +25,52 @@ type JoyconCandidate struct {
 func (am *AdapterManager) ScanJoycons() ([]JoyconCandidate, error) {
 	adapter := am.Adapter
 
-	err := adapter.Enable()
-	if err != nil {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+
+	if err := adapter.Enable(); err != nil {
 		return nil, err
 	}
 
+	var stopOnce sync.Once
+	stopScan := func(reason string) {
+		stopOnce.Do(func() {
+			if err := am.stopScan(reason); err != nil {
+				fmt.Printf("stop scan failed: %v\n", err)
+			}
+		})
+	}
+
 	timer := time.AfterFunc(SCAN_TIMEOUT, func() {
-		if err :=
-			am.stopScan(fmt.Sprintf("timeout (%s)", SCAN_TIMEOUT)); err != nil {
-		}
+		stopScan(fmt.Sprintf("timeout (%s)", SCAN_TIMEOUT))
 	})
 	defer timer.Stop()
 
+	go func() {
+		<-ctx.Done()
+		stopScan("cancelled by signal")
+	}()
+
 	fmt.Printf("Scanning for Joy-Con 2 (max %d, timeout %s)...\n\n", am.maxJoyconConnections, SCAN_TIMEOUT)
 
-	err = adapter.Scan(
-		func(a *bluetooth.Adapter, result bluetooth.ScanResult) {
-			err := am.onAdapterScan(result)
+	err := adapter.Scan(func(a *bluetooth.Adapter, result bluetooth.ScanResult) {
+		err := am.onAdapterScan(result)
+		if err != nil {
+			fmt.Printf("Error during scan callback: %v\n", err)
+			return
+		}
 
-			if err != nil {
-				fmt.Printf("Error during scan callback: %v\n", err)
-			}
-		})
+		if am.candidateCount() >= am.maxJoyconConnections {
+			stopScan(fmt.Sprintf("found %d Joy-Con device(s)", am.maxJoyconConnections))
+		}
+	})
 
 	if err != nil {
-		return nil, fmt.Errorf("Failed to scan for Joy-Con devices: %w", err)
+		return nil, fmt.Errorf("failed to scan for Joy-Con devices: %w", err)
+	}
+
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
 	fmt.Printf("Scan complete. Joy-Con candidates found: %d\n", len(am.candidates))
@@ -60,6 +85,13 @@ func (am *AdapterManager) stopScan(reason string) error {
 	}
 
 	return nil
+}
+
+func (am *AdapterManager) candidateCount() int {
+	am.mu.Lock()
+	defer am.mu.Unlock()
+
+	return len(am.candidates)
 }
 
 func (am *AdapterManager) onAdapterScan(result bluetooth.ScanResult) error {
@@ -101,12 +133,6 @@ func (am *AdapterManager) onAdapterScan(result bluetooth.ScanResult) error {
 
 	fmt.Printf("Possible Joy-Con 2 found #%d\n", len(am.candidates))
 	fmt.Printf("  Address: %s\n", addr)
-
-	if len(am.candidates) >= am.maxJoyconConnections {
-		if err := am.stopScan(fmt.Sprintf("found %d Joy-Con device(s)", am.maxJoyconConnections)); err != nil {
-			return fmt.Errorf("Error stopping scan: %w", err)
-		}
-	}
 
 	return nil
 }
