@@ -1,6 +1,7 @@
 package joy2mac
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -11,126 +12,116 @@ const NINTENDO_SERVICE_UUID = "ab7de9be-89fe-49ad-828f-118f09df7fd0"
 const INPUT_REPORT_CHARACTERISTIC_UUID = "ab7de9be-89fe-49ad-828f-118f09df7fd2"
 const WRITE_COMMAND_CHARACTERISTIC_UUID = "649d4ac9-8eb7-4e6c-af44-1ea54fe5f005"
 
-func StartJoyconConnection(candidate JoyconCandidate, playerNo int) (bluetooth.Device, error) {
-	adapter := bluetooth.DefaultAdapter
+var ErrNintendoServiceNotFound = errors.New("nintendo service not found")
 
-	const maxAttempts = 3
-	var lastErr error
+type JoyconSession struct {
+	address             bluetooth.Address
+	device              bluetooth.Device
+	nintendoService     bluetooth.DeviceService
+	writeCharacteristic bluetooth.DeviceCharacteristic
+	inputCharacteristic bluetooth.DeviceCharacteristic
+	playerNo            int
 
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		fmt.Printf("\nAttempting to connect to device at %s (attempt %d/%d)...\n", candidate.AddressString, attempt, maxAttempts)
-
-		device, err := adapter.Connect(candidate.Address, bluetooth.ConnectionParams{
-			ConnectionTimeout: bluetooth.NewDuration(20 * time.Second),
-		})
-		if err != nil {
-			lastErr = err
-			fmt.Printf("Connect attempt failed: %v\n", err)
-			time.Sleep(2 * time.Second)
-			continue
-		}
-
-		if err := onConnected(device, playerNo); err != nil {
-			_ = device.Disconnect()
-			return bluetooth.Device{}, fmt.Errorf("connected but setup failed: %w", err)
-		}
-
-		return device, nil
-	}
-
-	return bluetooth.Device{}, fmt.Errorf("failed to connect after %d attempts: %w", maxAttempts, lastErr)
+	// State flags
+	Connected                bool
+	writeCharacteristicFound bool
+	inputCharacteristicFound bool
 }
 
-func discoverService(device bluetooth.Device, serviceUUID bluetooth.UUID) ([]bluetooth.DeviceService, error) {
-	services, err := device.DiscoverServices([]bluetooth.UUID{serviceUUID})
+func CreateJoyconSession(
+	candidate JoyconCandidate,
+	playerNo int,
+) *JoyconSession {
+	return &JoyconSession{
+		address:  candidate.Address,
+		playerNo: playerNo,
+	}
+}
+
+func (session *JoyconSession) Device() bluetooth.Device {
+	return session.device
+}
+
+func (session *JoyconSession) StartJoyconConnection() error {
+	device, err := bluetooth.DefaultAdapter.Connect(session.address, bluetooth.ConnectionParams{
+		ConnectionTimeout: bluetooth.NewDuration(5 * time.Second),
+	})
+
 	if err != nil {
-		return nil, fmt.Errorf("service discovery error: %w", err)
+		return err
 	}
 
-	return services, nil
-}
-
-func discoverCharacteristic(service bluetooth.DeviceService, characteristicUUID bluetooth.UUID) ([]bluetooth.DeviceCharacteristic, error) {
-	characteristics, err := service.DiscoverCharacteristics([]bluetooth.UUID{characteristicUUID})
-	if err != nil {
-		return nil, fmt.Errorf("characteristic discovery error: %w", err)
+	session.device = device
+	if err := session.setupServices(); err != nil {
+		_ = device.Disconnect()
+		return err
 	}
 
-	return characteristics, nil
+	session.Connected = true
+	return nil
+
 }
 
-func onConnected(device bluetooth.Device, playerNo int) error {
-	fmt.Printf("Connected to device: %s\n", device.Address.UUID)
-
+func (session *JoyconSession) setupServices() error {
 	nintendoServiceUUID, err := bluetooth.ParseUUID(NINTENDO_SERVICE_UUID)
 	if err != nil {
-		return fmt.Errorf("failed to parse nintendo service UUID: %w", err)
+		return err
 	}
+
+	services, err := session.discoverService(nintendoServiceUUID)
+	if err != nil {
+		return fmt.Errorf("failed to discover nintendo service: %w", err)
+	}
+
+	if len(services) == 0 {
+		return ErrNintendoServiceNotFound
+	}
+
+	session.nintendoService = services[0]
 
 	writeUUID, err := bluetooth.ParseUUID(WRITE_COMMAND_CHARACTERISTIC_UUID)
 	if err != nil {
 		return fmt.Errorf("failed to parse write characteristic UUID: %w", err)
 	}
+
 	inputUUID, err := bluetooth.ParseUUID(INPUT_REPORT_CHARACTERISTIC_UUID)
 	if err != nil {
 		return fmt.Errorf("failed to parse input characteristic UUID: %w", err)
 	}
 
-	services, err := discoverService(device, nintendoServiceUUID)
-	if err != nil || len(services) == 0 {
-		return fmt.Errorf("Failed to discover nintendo service!")
-	}
-
-	fmt.Printf("Services discovered: %d\n", len(services))
-	characteristics, err := services[0].DiscoverCharacteristics(nil)
-
+	session.writeCharacteristic, err = session.discoverCharacteristic(writeUUID)
+	writeChar, err := session.discoverCharacteristic(writeUUID)
 	if err != nil {
-		return fmt.Errorf("Failed to discover nintendo service characteristics: %w", err)
+		return fmt.Errorf("failed to discover write characteristic: %w", err)
 	}
 
-	fmt.Println("Nintendo service found!")
-	for _, c := range characteristics {
-		fmt.Printf("  Characteristic: %s\n", c.UUID())
-	}
-
-	nintendoService := services[0]
-	writeCharacteristics, err := discoverCharacteristic(nintendoService, writeUUID)
-	if err != nil || len(writeCharacteristics) == 0 {
-		return fmt.Errorf("Failed to discover write characteristic!")
-	}
-
-	inputCharacteristics, err := discoverCharacteristic(nintendoService, inputUUID)
-	if err != nil || len(inputCharacteristics) == 0 {
-		return fmt.Errorf("Failed to discover input characteristic!")
-	}
-
-	fmt.Println("\nSetting player LEDs...")
-	err = setPlayerLEDs(writeCharacteristics[0], playerNo)
-
+	inputChar, err := session.discoverCharacteristic(inputUUID)
 	if err != nil {
-		return fmt.Errorf("setPlayerLEDs failed: %w\n", err)
-	}
-	time.Sleep(150 * time.Millisecond)
-
-	fmt.Println("Enabling IMU...")
-	err = enable_imu(writeCharacteristics[0])
-	if err != nil {
-		return fmt.Errorf("enable_imu failed: %w\n", err)
+		return fmt.Errorf("failed to discover input characteristic: %w", err)
 	}
 
-	fmt.Println("Enabling input notifications...")
-	err = inputCharacteristics[0].EnableNotifications(func(buf []byte) {
-		if len(buf) == 0 {
-			return
-		}
-		fmt.Printf("Input report (%d): % X\n", len(buf), buf)
-	})
-	if err != nil {
-		return fmt.Errorf("enable notifications failed: %w", err)
-	}
+	session.writeCharacteristic = writeChar
+	session.inputCharacteristic = inputChar
 
-	fmt.Println("Joy-Con notification stream is active.")
 	return nil
+}
+
+func (session *JoyconSession) discoverService(serviceUUID bluetooth.UUID) ([]bluetooth.DeviceService, error) {
+	services, err := session.device.DiscoverServices([]bluetooth.UUID{serviceUUID})
+
+	if err != nil {
+		return nil, fmt.Errorf("service discovery error: %w", err)
+	}
+	return services, nil
+}
+
+func (session *JoyconSession) discoverCharacteristic(characteristicUUID bluetooth.UUID) (bluetooth.DeviceCharacteristic, error) {
+	characteristics, err := session.nintendoService.DiscoverCharacteristics([]bluetooth.UUID{characteristicUUID})
+	if err != nil {
+		return bluetooth.DeviceCharacteristic{}, fmt.Errorf("characteristic discovery error: %w", err)
+	}
+
+	return characteristics[0], nil
 }
 
 func writeCommand(

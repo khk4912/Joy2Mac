@@ -17,22 +17,22 @@ const (
 )
 
 type JoyconCandidate struct {
+	Device        bluetooth.Device
 	Address       bluetooth.Address
 	AddressString string
 }
 
-func ScanJoycons() ([]JoyconCandidate, error) {
-	adapter := bluetooth.DefaultAdapter
+func (am *AdapterManager) ScanJoycons() ([]JoyconCandidate, error) {
+	adapter := am.adapter
 
 	err := adapter.Enable()
 	if err != nil {
 		return nil, err
 	}
 
-	candidates := make([]JoyconCandidate, 0, maxFoundJoycons)
-
 	timer := time.AfterFunc(scanTimeout, func() {
-		if err := stopScan(adapter, fmt.Sprintf("timeout (%s)", scanTimeout)); err != nil {
+		if err :=
+			am.stopScan(fmt.Sprintf("timeout (%s)", scanTimeout)); err != nil {
 			fmt.Printf("Error stopping scan on timeout: %v\n", err)
 		}
 	})
@@ -42,7 +42,7 @@ func ScanJoycons() ([]JoyconCandidate, error) {
 
 	err = adapter.Scan(
 		func(a *bluetooth.Adapter, result bluetooth.ScanResult) {
-			err := onAdapterScan(a, result, &candidates)
+			err := am.onAdapterScan(result)
 
 			if err != nil {
 				fmt.Printf("Error during scan callback: %v\n", err)
@@ -53,28 +53,21 @@ func ScanJoycons() ([]JoyconCandidate, error) {
 		return nil, fmt.Errorf("Failed to scan for Joy-Con devices: %w", err)
 	}
 
-	fmt.Printf("Scan complete. Joy-Con candidates found: %d\n", len(candidates))
-	return candidates, nil
+	fmt.Printf("Scan complete. Joy-Con candidates found: %d\n", len(am.candidates))
+	return am.candidates, nil
 }
 
-func stopScan(a *bluetooth.Adapter, reason string) error {
+func (am *AdapterManager) stopScan(reason string) error {
 	fmt.Printf("Stopping scan: %s\n", reason)
 
-	if stopErr := a.StopScan(); stopErr != nil {
+	if stopErr := am.adapter.StopScan(); stopErr != nil {
 		return fmt.Errorf("Failed to stop scan: %w", stopErr)
 	}
 
 	return nil
 }
 
-func onAdapterScan(
-	a *bluetooth.Adapter,
-	result bluetooth.ScanResult,
-	candidates *[]JoyconCandidate) error {
-
-	seen := map[string]struct{}{}
-	found := 0
-
+func (am *AdapterManager) onAdapterScan(result bluetooth.ScanResult) error {
 	manufactureData := result.ManufacturerData()
 
 	if len(manufactureData) == 0 {
@@ -98,25 +91,22 @@ func onAdapterScan(
 
 	addr := result.Address.String()
 
-	if _, exists := seen[addr]; exists {
+	if _, exists := am.seenDevices[addr]; exists {
 		return nil
 	}
 
-	seen[addr] = struct{}{}
+	am.seenDevices[addr] = struct{}{}
 
-	found++
-	count := found
-
-	*candidates = append(*candidates, JoyconCandidate{
+	am.candidates = append(am.candidates, JoyconCandidate{
 		Address:       result.Address,
 		AddressString: addr,
 	})
 
-	fmt.Printf("Possible Joy-Con 2 found #%d\n", count)
+	fmt.Printf("Possible Joy-Con 2 found #%d\n", len(am.candidates))
 	fmt.Printf("  Address: %s\n", addr)
 
-	if count >= maxFoundJoycons {
-		if err := stopScan(a, fmt.Sprintf("found %d Joy-Con device(s)", maxFoundJoycons)); err != nil {
+	if len(am.candidates) >= maxFoundJoycons {
+		if err := am.stopScan(fmt.Sprintf("found %d Joy-Con device(s)", maxFoundJoycons)); err != nil {
 			return fmt.Errorf("Error stopping scan: %w", err)
 		}
 	}
