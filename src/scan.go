@@ -91,12 +91,13 @@ func (am *AdapterManager) onAdapterScan(result bluetooth.ScanResult) error {
 	}
 
 	am.mu.Lock()
+	defer am.mu.Unlock()
+
 	am.seenDevices[addr] = struct{}{}
 	am.candidates = append(am.candidates, JoyconCandidate{
 		Address:       result.Address,
 		AddressString: addr,
 	})
-	am.mu.Unlock()
 
 	fmt.Printf("Possible Joy-Con 2 found #%d\n", len(am.candidates))
 	fmt.Printf("  Address: %s\n", addr)

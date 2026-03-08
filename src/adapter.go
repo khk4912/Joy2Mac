@@ -59,6 +59,7 @@ func (am *AdapterManager) ConnectSession(session *JoyconSession) error {
 	}
 
 	session.markConnected()
+	session.StartInputNotification(session.inputCh)
 	return nil
 }
 

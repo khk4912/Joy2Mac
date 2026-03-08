@@ -25,19 +25,27 @@ type JoyconSession struct {
 	writeCharacteristic bluetooth.DeviceCharacteristic
 	inputCharacteristic bluetooth.DeviceCharacteristic
 	playerNo            int
+	inputCh             chan<- InputData
 
 	Connected    bool
 	reConnecting bool
 	mu           sync.Mutex
 }
 
+type InputData struct {
+	playerNo int
+	data     []byte
+}
+
 func CreateJoyconSession(
 	candidate JoyconCandidate,
 	playerNo int,
+	inputCh chan<- InputData,
 ) *JoyconSession {
 	return &JoyconSession{
 		address:  candidate.Address,
 		playerNo: playerNo,
+		inputCh:  inputCh,
 	}
 }
 
@@ -63,9 +71,10 @@ func (session *JoyconSession) attachDevice(device bluetooth.Device) {
 
 func (session *JoyconSession) markConnected() {
 	session.mu.Lock()
+	defer session.mu.Unlock()
+
 	session.Connected = true
 	session.reConnecting = false
-	session.mu.Unlock()
 }
 
 func (session *JoyconSession) markDisconnected() bool {
@@ -92,8 +101,9 @@ func (session *JoyconSession) beginReconnect() bool {
 
 func (session *JoyconSession) endReconnect() {
 	session.mu.Lock()
+	defer session.mu.Unlock()
+
 	session.reConnecting = false
-	session.mu.Unlock()
 }
 
 func (session *JoyconSession) resetConnectionState() {
@@ -139,10 +149,6 @@ func (session *JoyconSession) setupConnection() error {
 
 	if err := session.enableIMU(); err != nil {
 		return fmt.Errorf("failed to enable IMU: %w", err)
-	}
-
-	if err := session.startInputNotifications(); err != nil {
-		return fmt.Errorf("failed to enable input notifications: %w", err)
 	}
 
 	return nil
@@ -288,11 +294,18 @@ func (session *JoyconSession) enableIMU() error {
 	return nil
 }
 
-func (session *JoyconSession) startInputNotifications() error {
-	return session.inputCharacteristic.EnableNotifications(func(buf []byte) {
-		if len(buf) == 0 {
-			return
-		}
-		SingleJoyconHandler(buf)
-	})
+func (session *JoyconSession) StartInputNotification(outCh chan<- InputData) error {
+	return session.inputCharacteristic.EnableNotifications(
+		func(buf []byte) {
+			if len(buf) == 0 {
+				return
+			}
+			select {
+			case outCh <- InputData{
+				playerNo: session.playerNo,
+				data:     buf,
+			}:
+			default:
+			}
+		})
 }
