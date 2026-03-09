@@ -124,10 +124,10 @@ func (am *AdapterManager) onAdapterScan(result bluetooth.ScanResult) error {
 	}
 
 	side := UnknownSide
-	if result.LocalName() == "Joy-Con (L)" {
+	if result.LocalName() == "Joy-Con 2 (L)" {
 		side = LeftSide
 	}
-	if result.LocalName() == "Joy-Con (R)" {
+	if result.LocalName() == "Joy-Con 2 (R)" {
 		side = RightSide
 	}
 
