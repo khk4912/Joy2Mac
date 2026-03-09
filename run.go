@@ -9,6 +9,7 @@ import (
 
 func main() {
 	mode := "single"
+
 	if len(os.Args) > 1 {
 		mode = os.Args[1]
 	}

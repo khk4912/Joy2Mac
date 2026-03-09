@@ -27,14 +27,11 @@ type JoyconSession struct {
 	playerNo            int
 	inputCh             chan<- InputData
 
-	Connected    bool
+	Connected bool
+	Side      JoyconSide
+
 	reConnecting bool
 	mu           sync.Mutex
-}
-
-type InputData struct {
-	playerNo int
-	data     []byte
 }
 
 func CreateJoyconSession(
@@ -46,6 +43,7 @@ func CreateJoyconSession(
 		address:  candidate.Address,
 		playerNo: playerNo,
 		inputCh:  inputCh,
+		Side:     candidate.Side,
 	}
 }
 
@@ -314,8 +312,9 @@ func (session *JoyconSession) StartInputNotification(outCh chan<- InputData) err
 			payload := append([]byte(nil), buf...)
 			select {
 			case outCh <- InputData{
-				playerNo: session.playerNo,
-				data:     payload,
+				PlayerNo: session.playerNo,
+				Side:     session.Side,
+				Data:     payload,
 			}:
 			default:
 			}

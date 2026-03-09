@@ -45,6 +45,7 @@ func (am *AdapterManager) ConnectSession(session *JoyconSession) error {
 		ConnectionTimeout: bluetooth.NewDuration(5 * time.Second),
 	})
 	am.connectMu.Unlock()
+
 	if err != nil {
 		return fmt.Errorf("connect failed: %w", err)
 	}
@@ -71,11 +72,13 @@ func (am *AdapterManager) ConnectSession(session *JoyconSession) error {
 
 func (am *AdapterManager) Shutdown() {
 	am.mu.Lock()
+
 	am.shuttingDown = true
 	sessions := make([]*JoyconSession, 0, len(am.JoyconSessions))
 	for _, session := range am.JoyconSessions {
 		sessions = append(sessions, session)
 	}
+
 	am.mu.Unlock()
 
 	for _, session := range sessions {

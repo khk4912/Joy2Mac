@@ -15,6 +15,7 @@ type joyconInputSource struct {
 	name    string
 	title   string
 	inputCh <-chan InputData
+	side    JoyconSide
 }
 
 type joyconPacketMsg struct {
@@ -45,6 +46,7 @@ type joyconCardState struct {
 	lastPacket  []byte
 	lastUpdated time.Time
 	closed      bool
+	side        JoyconSide
 }
 
 type joyconViewerModel struct {
@@ -62,6 +64,7 @@ func newJoyconViewerModel(inputSources []joyconInputSource) joyconViewerModel {
 		order = append(order, source.name)
 		sources[source.name] = joyconCardState{
 			title: source.title,
+			side:  source.side,
 		}
 	}
 
@@ -87,10 +90,13 @@ func (m joyconViewerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 	case joyconPacketMsg:
 		state := m.sources[msg.source]
-		state.playerNo = msg.data.playerNo
+		state.playerNo = msg.data.PlayerNo
+		if msg.data.Side != UnknownSide {
+			state.side = msg.data.Side
+		}
 		state.packetCount++
-		state.payloadSize = len(msg.data.data)
-		state.lastPacket = msg.data.data
+		state.payloadSize = len(msg.data.Data)
+		state.lastPacket = msg.data.Data
 		state.lastUpdated = msg.at
 		state.closed = false
 		m.sources[msg.source] = state
@@ -120,9 +126,10 @@ func (m joyconViewerModel) View() string {
 	help := subtitleStyle.Render("Press q to quit")
 
 	cards := make([]string, 0, len(m.order))
-	for i, key := range m.order {
-		role := classifyRenderRole(i, len(m.order))
-		cards = append(cards, m.renderControllerCard(m.sources[key], role))
+	for _, key := range m.order {
+		state := m.sources[key]
+		role := classifyRenderRole(state.side, len(m.order))
+		cards = append(cards, m.renderControllerCard(state, role))
 	}
 
 	body := strings.Join(cards, "\n\n")
@@ -201,8 +208,8 @@ func forwardJoyconInput(ctx context.Context, program *tea.Program, source joycon
 				return
 			}
 
-			cloned := append([]byte(nil), input.data...)
-			input.data = cloned
+			cloned := append([]byte(nil), input.Data...)
+			input.Data = cloned
 
 			program.Send(joyconPacketMsg{
 				source: source.name,
@@ -234,14 +241,18 @@ func renderPacketPreview(packet []byte) string {
 	return strings.Join(lines, "\n")
 }
 
-func classifyRenderRole(index int, total int) joyconRenderRole {
-	if total == 1 {
-		return joyconRoleSingle
-	}
-	if index == 0 {
+func classifyRenderRole(side JoyconSide, total int) joyconRenderRole {
+	switch side {
+	case LeftSide:
 		return joyconRoleLeft
+	case RightSide:
+		return joyconRoleRight
+	case UnknownSide:
+		if total == 1 {
+			return joyconRoleSingle
+		}
 	}
-	return joyconRoleRight
+	return joyconRoleSingle
 }
 
 func controllerStatus(state joyconCardState) string {
