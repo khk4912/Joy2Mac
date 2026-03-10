@@ -31,6 +31,10 @@ func StartSingleJoyconMode() {
 
 	inputCh := make(chan InputData, 1)
 	session := CreateJoyconSession(candidates[0], 1, inputCh)
+	if session.Side == UnknownSide {
+		session.Side = LeftSide
+		fmt.Println("Joy-Con side was unknown; forcing LeftSide for single-controller debugging.")
+	}
 	adapterManger.AddJoyconSession(session)
 
 	err = adapterManger.ConnectSession(session)
