@@ -21,6 +21,7 @@ func parseInputData(joyconInputch <-chan InputData) <-chan JoyconState {
 				Accel:       parseAccel(raw),
 				Gyro:        parseGyro(raw),
 				Voltage:     parseVoltage(raw),
+				Ampere:      parseAmpere(raw),
 			}
 
 			switch state.Side {
@@ -28,8 +29,8 @@ func parseInputData(joyconInputch <-chan InputData) <-chan JoyconState {
 				state.Stick = parseLeftStick(raw)
 				state.Buttons = parseLeftButtons(raw)
 			case RightSide:
-				// state.Buttons = parseRightButtons(raw)
-				// state.Stick = parseRightStick(raw)
+				state.Stick = parseRightStick(raw)
+				state.Buttons = parseRightButtons(raw)
 			}
 
 			parsedCh <- state
@@ -58,13 +59,21 @@ func parseTemperature(data []byte) float64 {
 }
 
 func parseVoltage(data []byte) float64 {
-	raw := read(data, 0x1C, 2)
+	raw := read(data, 0x1F, 2)
 	if raw == nil {
 		return 0
 	}
 	voltageRaw := binary.LittleEndian.Uint16(raw)
-
 	return float64(voltageRaw) * 0.001
+}
+
+func parseAmpere(data []byte) float64 {
+	raw := read(data, 0x28, 2)
+	if raw == nil {
+		return 0
+	}
+	ampereRaw := binary.LittleEndian.Uint16(raw)
+	return float64(ampereRaw) * 0.001
 }
 
 func parseAccel(data []byte) [3]float64 {
@@ -127,6 +136,43 @@ func parseLeftButtons(data []byte) ButtonState {
 
 func parseLeftStick(data []byte) StickInput {
 	raw := read(data, 10, 3)
+	if raw == nil {
+		return StickInput{}
+	}
+
+	rawNum := binary.LittleEndian.Uint32(append(raw, 0x00)) // Pad to 4 bytes for easier bit manipulation
+
+	return StickInput{
+		X: int16(rawNum & 0xFFF),
+		Y: int16((rawNum >> 12) & 0xFFF),
+	}
+}
+
+func parseRightButtons(data []byte) ButtonState {
+	raw := read(data, 0x04, 3)
+
+	if raw == nil {
+		return ButtonState{}
+	}
+
+	return ButtonState{
+		ButtonY:        raw[0]&0x01 != 0,
+		ButtonX:        raw[0]&0x02 != 0,
+		ButtonB:        raw[0]&0x04 != 0,
+		ButtonA:        raw[0]&0x08 != 0,
+		ButtonSR:       raw[0]&0x10 != 0,
+		ButtonSL:       raw[0]&0x20 != 0,
+		ButtonR:        raw[0]&0x40 != 0,
+		ButtonZR:       raw[0]&0x80 != 0,
+		ButtonPlus:     raw[1]&0x02 != 0,
+		ButtonStick:    raw[1]&0x04 != 0,
+		ButtonHome:     raw[1]&0x10 != 0,
+		ButtonGameChat: raw[1]&0x40 != 0,
+	}
+}
+
+func parseRightStick(data []byte) StickInput {
+	raw := read(data, 13, 3)
 	if raw == nil {
 		return StickInput{}
 	}

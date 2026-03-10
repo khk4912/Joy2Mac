@@ -285,7 +285,6 @@ func renderButtonPanel(state joyconCardState, role joyconRenderRole, accent lipg
 			buttonSpec{label: "R", button: ButtonR},
 			buttonSpec{label: "ZR", button: ButtonZR},
 			buttonSpec{label: "+", button: ButtonPlus},
-			buttonSpec{label: "HOME", button: ButtonHome},
 			buttonSpec{label: "X", button: ButtonX},
 			buttonSpec{label: "Y", button: ButtonY},
 			buttonSpec{label: "A", button: ButtonA},
@@ -293,6 +292,8 @@ func renderButtonPanel(state joyconCardState, role joyconRenderRole, accent lipg
 			buttonSpec{label: "SL", button: ButtonSL},
 			buttonSpec{label: "STK", button: ButtonStick},
 			buttonSpec{label: "SR", button: ButtonSR},
+			buttonSpec{label: "HOME", button: ButtonHome},
+			buttonSpec{label: "CHAT", button: ButtonGameChat},
 		)
 	default:
 		return renderButtonStrip(accent, state,
@@ -312,6 +313,7 @@ func renderButtonPanel(state joyconCardState, role joyconRenderRole, accent lipg
 			buttonSpec{label: "STK", button: ButtonStick},
 			buttonSpec{label: "+", button: ButtonPlus},
 			buttonSpec{label: "HOME", button: ButtonHome},
+			buttonSpec{label: "CHAT", button: ButtonGameChat},
 		)
 	}
 }
@@ -354,8 +356,9 @@ func renderStateSummary(state JoyconState) string {
 		renderMetricRow("Temp",
 			fmt.Sprintf("%5.2f C", state.Temperature),
 		),
-		renderMetricRow("Volt",
+		renderMetricRow("Batt",
 			fmt.Sprintf("%5.2f V", state.Voltage),
+			fmt.Sprintf("%5.2f A", state.Ampere),
 		),
 
 		renderMetricRow("Stick",

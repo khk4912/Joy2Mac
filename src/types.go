@@ -57,6 +57,7 @@ type JoyconState struct {
 	Accel       [3]float64 // X Y Z
 	Gyro        [3]float64
 	Voltage     float64
+	Ampere      float64
 }
 
 var State JoyconState
