@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -408,23 +407,6 @@ func renderPacketPreview(packet []byte) string {
 	}
 
 	return strings.Join(lines, "\n")
-}
-
-func pressedButtons(buttons ButtonState) []string {
-	if len(buttons) == 0 {
-		return nil
-	}
-
-	names := make([]string, 0, len(buttons))
-	for button, pressed := range buttons {
-		if !pressed {
-			continue
-		}
-		names = append(names, buttonLabel(button))
-	}
-
-	sort.Strings(names)
-	return names
 }
 
 func buttonLabel(button Button) string {
