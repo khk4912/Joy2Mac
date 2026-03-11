@@ -10,3 +10,10 @@
 > ./joy2mac # single joycon mode
 > ./joy2mac dual # dual joycon mode
 ```
+
+## Acknowledgements
+
+It would have been impossible to create this project without the help of the following projects:
+
+- [joycon2py](https://github.com/joycon2py)
+- [joycon2mac](https://github.com/loyahdev/joycon2mac)
