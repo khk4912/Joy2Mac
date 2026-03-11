@@ -19,8 +19,10 @@ func main() {
 		joy2mac.StartSingleJoyconMode()
 	case "dual":
 		joy2mac.StartDualJoyconMode()
+	case "mouse":
+		joy2mac.MouseHandler()
 	default:
-		fmt.Fprintf(os.Stderr, "usage: %s [single|dual]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "usage: %s [single|dual|mouse]\n", os.Args[0])
 		os.Exit(2)
 	}
 }
