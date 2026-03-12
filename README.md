@@ -9,7 +9,12 @@
 
 > ./joy2mac # single joycon mode
 > ./joy2mac dual # dual joycon mode
+> ./joy2mac mouse # mouse bridge mode
 ```
+
+## Demo
+
+[Videos](https://github.com/khk4912/Joy2Mac/issues/1)
 
 ## Acknowledgements
 
